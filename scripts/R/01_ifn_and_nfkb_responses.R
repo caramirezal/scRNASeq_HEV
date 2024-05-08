@@ -149,43 +149,8 @@ umap_1 + umap_2
 dev.off()
 
 
-
-
-
-##--------------------------------------------------------------
-## QC metrics
-umap_nCount <- FeaturePlot(seurat_2, 
-                           features='nCount_RNA',
-                           order=TRUE) +
-        theme_bw() +
-        theme(panel.border = element_blank()) +
-        ggtitle('') +
-        scale_color_viridis()
-
-umap_nFeature <- FeaturePlot(seurat_2, 
-                           features='nFeature_RNA',
-                           order=TRUE) +
-        theme_bw() +
-        theme(panel.border = element_blank()) +
-        ggtitle('') +
-        scale_color_viridis()
-
-
-
-pdf(paste0(path2figures, '/umap_qc_metrics.pdf'),
-     width = 4.5, height=4.5)
-umap_nCount + umap_nFeature
-dev.off()
-
-
-jpeg(paste0(path2figures, '/umap_qc_metrics.jpeg'))
-umap_nCount + umap_nFeature
-dev.off()
-
-
-
-
-
+##----------------------------------------------------------------------------------------
+## IFN and NFkB signatures
 
 
 ## Plotting UMAP of the integrated samples
@@ -246,103 +211,8 @@ dev.off()
 
 
 ##--------------------------------------------------------------------------
-## Viral gene expression orfs
-
-jpeg(paste0(path2figures, '/boxplot_orfs.jpg'))
-boxplot_orfs <- gex_df %>%
-    select(ORF1, ORF2, ORF3, orig.ident) %>%
-    melt() %>%
-    ggplot(aes(x=orig.ident,
-               y=log(value+1),
-               fill=orig.ident)) +
-        geom_boxplot() +
-        theme_bw() +
-        facet_wrap(~variable, 
-                   scale='free') +
-        scale_fill_manual(values=colors_seq2_samples) +
-        theme(axis.text.x = element_blank(),
-               axis.ticks.x = element_blank())
-boxplot_orfs
-dev.off()
-
-
-
-
-pdf(paste0(path2figures, '/boxplot_orfs.pdf'),
-    height = 3.5, width = 7)
-boxplot_orfs <- gex_df %>%
-    select(ORF1, ORF2, ORF3, orig.ident) %>%
-    melt() %>%
-    ggplot(aes(x=orig.ident,
-               y=log(value+1),
-               fill=orig.ident)) +
-        geom_boxplot() +
-        theme_bw() +
-        facet_wrap(~variable, 
-                   scale='free') +
-        scale_fill_manual(values=colors_seq2_samples) +
-        theme(axis.text.x = element_blank(),
-               axis.ticks.x = element_blank()) +
-        labs(fill='')
-boxplot_orfs
-dev.off()
-
-
-
-
-##------------------------------------------------------------------
-## Distribution of ORF1/2
-jpeg(paste0(path2figures, '/scatterplot_orf_distribution.jpeg'))
-scatterplot_orf_distribution <- gex_df %>%
-    ggplot(aes(x=ORF1+1, 
-               y=ORF2+1, 
-               colour=infected)) +
-            geom_point(alpha=0.5) +
-            theme_classic() + 
-            scale_x_continuous(trans='log10') +
-            scale_y_continuous(trans='log10') +
-            facet_wrap(~orig.ident)
-scatterplot_orf_distribution
-dev.off()
-
-
-
-pdf(paste0(path2figures, 
-             '/scatterplot_orf_distribution.pdf'),
-    height=6, width = 6.5)
-scatterplot_orf_distribution 
-dev.off()
-
-
-
-
-
-
-##--------------------------------------------------------------------------
 ## Bystander cell definition
 ## Distribution of INF and NFkB scores in cells
-
-jpeg(paste0(path2figures, '/scatterplot_orf2_vs_ifn.jpg'))
-scatterplot_orf2_ifn <- gex_df %>% 
-    ggplot(aes(x=ORF2+1,
-               y=ifn_signature,
-               colour=orig.ident)) +
-               geom_point(alpha=0.75) +
-               theme_bw() +
-            scale_x_continuous(trans='log10') +
-            scale_colour_manual(values=colors_seq2_samples) +
-            labs(colour='',
-                 y='IFN Signature')
-scatterplot_orf2_ifn     
-dev.off()
-
-
-pdf(paste0(path2figures, '/scatterplot_orf2_vs_ifn.pdf'),
-    width = 8, height = 5.5)
-scatterplot_orf2_ifn
-dev.off()
-
-
 
 ## Exploration of the definition of IFN active cells
 
@@ -580,7 +450,6 @@ plot_umap_heterogeneity <- function(
 
 ##-------------------------------------------------------------------------------------------
 ## All cells 
-
 ## IFN signature
 
 ## Clustering
@@ -616,7 +485,6 @@ dev.off()
 
 ##--------------------------------------------------------------
 ## Negative cells
-
 ## IFN signature
 
 ## Clustering
@@ -653,10 +521,8 @@ dev.off()
 
 
 ##--------------------------------------------------------------
-
-
-
 ## NFkB signature
+## All cells
 
 ## Clustering
 samples <- unique(seurat_2$orig.ident)
@@ -689,9 +555,8 @@ dev.off()
 
 
 ##-------------------------------------------------------------------
+## ORF2 negative cells
 
-
-## Clustering
 seurat_negative <- subset(seurat_2, infected == FALSE)
 samples <- unique(seurat_2$orig.ident)
 umaps_ifn_heterogeneity_list <- lapply(
