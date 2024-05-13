@@ -28,7 +28,7 @@ library(RColorBrewer)
 
 set.seed(333)
 
-rerun <- FALSE
+rerun <- TRUE
 
 ## Working directory
 path2project <- '/media/ag-cherrmann/cramirez/scRNASeq_HEV'
@@ -77,26 +77,35 @@ if ( rerun == TRUE ) {
 }
 
 
-
-## Reading the signatures
+## Loading signatures
+isg_signature_df <- readxl::read_xlsx(
+    paste0(path2project, 
+    '/data/signatures/240412_ISG-List_Schoggins_NEW.xlsx'),
+    col_names = FALSE,
+    sheet = "ISGs"
+)
 ifn_signature_df <- readxl::read_xlsx(
     paste0(path2project, 
-    '/data/signatures/240412_ISG-List_Schoggins_FINAL.xlsx'),
-    col_names = FALSE
+    '/data/signatures/240412_ISG-List_Schoggins_NEW.xlsx'),
+    col_names = FALSE,
+    sheet = "IFNs"
 )
 nfkb_signature_df <- readxl::read_xlsx(
     paste0(path2project, 
     '/data/signatures/240412_NF-kB-Gene-List_FINAL.xlsx'),
     col_names = FALSE
 )
-signatures_list <- list(ifn_signature=ifn_signature_df$'...1',
-                        nfkb_signature=nfkb_signature_df$'...1')
+signatures_list <- list(isg_signature=isg_signature_df$'...1',
+                        nfkb_signature=nfkb_signature_df$'...1',
+                        ifn_signature=ifn_signature_df$'...1')
+
+
 
 
 if ( rerun == TRUE ) {
     ## Calculating the scores
     cells_rankings <- AUCell_buildRankings(counts_matrix, plotStats = FALSE)
-    cells_AUC <- AUCell_calcAUC(signatures_list, cells_rankings, 
+    cells_AUC <- AUCell_calcAUC(signatures_list[1:2], cells_rankings, 
                                 aucMaxRank=(nrow(cells_rankings)*0.05))
     auc.mtx <- getAUC(cells_AUC)
     auc.df <- as.data.frame(t(auc.mtx))

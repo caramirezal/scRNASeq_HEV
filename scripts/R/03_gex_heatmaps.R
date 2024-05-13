@@ -54,18 +54,26 @@ seurat_2
 
 
 ## Loading signatures
+isg_signature_df <- readxl::read_xlsx(
+    paste0(path2project, 
+    '/data/signatures/240412_ISG-List_Schoggins_NEW.xlsx'),
+    col_names = FALSE,
+    sheet = "ISGs"
+)
 ifn_signature_df <- readxl::read_xlsx(
     paste0(path2project, 
-    '/data/signatures/240412_ISG-List_Schoggins_FINAL.xlsx'),
-    col_names = FALSE
+    '/data/signatures/240412_ISG-List_Schoggins_NEW.xlsx'),
+    col_names = FALSE,
+    sheet = "IFNs"
 )
 nfkb_signature_df <- readxl::read_xlsx(
     paste0(path2project, 
     '/data/signatures/240412_NF-kB-Gene-List_FINAL.xlsx'),
     col_names = FALSE
 )
-signatures_list <- list(ifn_signature=ifn_signature_df$'...1',
-                        nfkb_signature=nfkb_signature_df$'...1')
+signatures_list <- list(isg_signature=isg_signature_df$'...1',
+                        nfkb_signature=nfkb_signature_df$'...1',
+                        ifn_signature=ifn_signature_df$'...1')
 
 
 
@@ -82,21 +90,53 @@ anns_nfkb_all <- read_tsv(paste0(path2clusterAnns,
                                 "/mapping_renamed_clusters_all_nfkb.tsv.gz"))   
 
 
-## Adding ifn and nfkb siganture expression
+## Adding ifn and nfkb signature expression
 path2auc <- paste0(path2project, "/analysis/01_ifn_and_nfkb_responses/")
 signatures_auc_df <- read_tsv(paste0(path2auc, "/ifn_nfkb_aucell.tsv.gz"))
 all(signatures_auc_df$barcode==colnames(seurat_2))
-seurat_2$"ifn_signature" <- signatures_auc_df$"ifn_signature"
+seurat_2$"isg_signature" <- signatures_auc_df$"isg_signature"
 seurat_2$"nfkb_signature" <- signatures_auc_df$"nfkb_signature"
 
 
 
 sample_name <- "WTL"
-#signature_name <- "ifn_signature"
+#signature_name <- "isg_signature"
 infection_status <- "all"
 
 
-    signature_df = filter(signature_df, ORF2_log < quantile(ORF2_log, probs = 0.95, na.rm = TRUE))
+#signature_df = filter(signature_df, ORF2_log < quantile(ORF2_log, probs = 0.95, na.rm = TRUE))
+
+
+## Getting HVGs across samples
+samples <- unique(seurat_2$orig.ident)
+names(samples) <- samples
+hvgs_list_isgs <- lapply(samples, function(sample_name){
+    signature_df = FetchData(subset(seurat_2, 
+                                    orig.ident==sample_name &
+                                      isg_signature < quantile(
+                                                isg_signature, 
+                                                probs = 0.95,
+                                                 na.rm = TRUE) &
+                                      nfkb_signature < quantile(
+                                                nfkb_signature, 
+                                                probs = 0.95,
+                                                 na.rm = TRUE) &
+                                      ORF2 < quantile(ORF2, probs = 0.95)
+                                     ), 
+                        vars=c(signatures_list["isg_signature"][[1]]), 
+                        layer="data")
+    mtx <- signature_df %>%
+                    as.matrix() %>%
+                    t()
+    hvgs <- apply(mtx, 1, var) %>%
+                sort(decreasing = TRUE) %>%
+                head(50) %>%
+                names()
+    return(hvgs)
+})
+hvgs <- unlist(hvgs_list_isgs) %>% unique()
+
+
 
 plot_heatmap <- function(
     sample_name,
@@ -104,8 +144,8 @@ plot_heatmap <- function(
 ){
     signature_df = FetchData(subset(seurat_2, 
                                     orig.ident==sample_name &
-                                      ifn_signature < quantile(
-                                                ifn_signature, 
+                                      isg_signature < quantile(
+                                                isg_signature, 
                                                 probs = 0.95,
                                                  na.rm = TRUE) &
                                       nfkb_signature < quantile(
@@ -115,40 +155,34 @@ plot_heatmap <- function(
                                       ORF2 < quantile(ORF2, probs = 0.95)
                                      ), 
                         vars=c(signatures_list[signature_name][[1]], 
-                                "ORF2", "ifn_signature",
+                               signatures_list["ifn_signature"][[1]], 
+                                "ORF2", "isg_signature",
                                 "nfkb_signature", "infected"), 
                         layer="data")
     signature_df = mutate(signature_df, ORF2_log=log10(ORF2+1))
-    signature_df$"cluster_renamed" <- plyr::mapvalues(
-    x = rownames(signature_df),
-    from =  anns_ifn_all$"barcode",
-    to = anns_ifn_all$"cluster_renamed"
-    )   
-    #table(signature_df$cluster_renamed)
     mtx = select(signature_df, 
                 -ORF2, 
                 -ORF2_log, 
-                -ifn_signature, 
-                -cluster_renamed, 
+                -isg_signature, 
                 -nfkb_signature,
                 -infected) %>%
                     as.matrix() %>%
                     t()
-    hvgs = apply(mtx, 1, var) %>%
-                sort(decreasing = TRUE) %>%
-                head(50) %>%
-                names()
-    mtx = mtx[hvgs, ]
+    genes <- c(hvgs, signatures_list["ifn_signature"][[1]])
+    genes <- genes[genes %in% rownames(mtx)]
+    mtx = mtx[genes, ]
+    is_ifn_gene <- ifelse(genes %in% 
+                          signatures_list["ifn_signature"][[1]],
+                          TRUE, FALSE)
     mdata = select(signature_df, 
                     ORF2, 
                     ORF2_log,
-                    cluster_renamed,
-                    ifn_signature,
+                    isg_signature,
                     nfkb_signature,
                     infected)
-    min <- min(pull(mdata, ifn_signature))
-    max = max(pull(mdata, ifn_signature))
-    mean_ifn <- mean(pull(mdata, ifn_signature))
+    min <- min(pull(mdata, isg_signature))
+    max = max(pull(mdata, isg_signature))
+    mean_ifn <- mean(pull(mdata, isg_signature))
     col_fun_ifn = circlize::colorRamp2(breaks=c(min,
                                                 mean_ifn,
                                                 max), 
@@ -173,20 +207,20 @@ plot_heatmap <- function(
                                         c("blue",
                                         "yellow",
                                         "red"))
-    col_ann <- HeatmapAnnotation(ifn_signature=mdata$"ifn_signature",
+    col_ann <- HeatmapAnnotation(isg_signature=mdata$"isg_signature",
                                 nfkb_signature=mdata$"nfkb_signature",
-                                cluster_renamed=mdata$"cluster_renamed",
                                 ORF2=mdata$"ORF2_log",
-                                col = list(ifn_signature=col_fun_ifn,
+                                col = list(isg_signature=col_fun_ifn,
                                             nfkb_signature=col_fun_nfkb,
-                                            cluster_renamed=color_clusters,
-                                            ORF2=col_fun_orf2
-                                            ))
+                                            ORF2=col_fun_orf2))
 
     Heatmap(mtx,
             top_annotation = col_ann,
             show_column_names = FALSE,
             column_split = mdata$infected,
+            row_split = is_ifn_gene,
+            row_title = NULL,
+            cluster_rows = FALSE,
             column_title = sample_name)
 
 }
@@ -201,8 +235,8 @@ plot_heatmap_mock <- function(
 ){
     signature_df = FetchData(subset(seurat_2, 
                                     orig.ident==sample_name &
-                                      ifn_signature < quantile(
-                                                ifn_signature, 
+                                      isg_signature < quantile(
+                                                isg_signature, 
                                                 probs = 0.95,
                                                  na.rm = TRUE) &
                                       nfkb_signature < quantile(
@@ -211,35 +245,32 @@ plot_heatmap_mock <- function(
                                                  na.rm = TRUE) 
                                      ), 
                         vars=c(signatures_list[signature_name][[1]], 
-                                "ORF2", "ifn_signature",
+                               signatures_list["ifn_signature"][[1]],
+                                "ORF2", "isg_signature",
                                 "nfkb_signature"), 
                         layer="data")
-    signature_df$"cluster_renamed" <- plyr::mapvalues(
-    x = rownames(signature_df),
-    from =  anns_ifn_all$"barcode",
-    to = anns_ifn_all$"cluster_renamed"
-    )   
-    #table(signature_df$cluster_renamed)
+    signature_df = mutate(signature_df, ORF2_log=log10(ORF2+1))
     mtx = select(signature_df, 
                 -ORF2, 
-                -ifn_signature, 
-                -cluster_renamed, 
+                -ORF2_log, 
+                -isg_signature, 
                 -nfkb_signature) %>%
                     as.matrix() %>%
                     t()
-    hvgs = apply(mtx, 1, var) %>%
-                sort(decreasing = TRUE) %>%
-                head(50) %>%
-                names()
-    mtx = mtx[hvgs, ]
+    genes <- c(hvgs, signatures_list["ifn_signature"][[1]])
+    genes <- genes[genes %in% rownames(mtx)]
+    mtx = mtx[genes, ]
+    is_ifn_gene <- ifelse(genes %in% 
+                          signatures_list["ifn_signature"][[1]],
+                          TRUE, FALSE)
     mdata = select(signature_df, 
                     ORF2, 
-                    cluster_renamed,
-                    ifn_signature,
+                    #cluster_renamed,
+                    isg_signature,
                     nfkb_signature)
-    min <- min(pull(mdata, ifn_signature))
-    max = max(pull(mdata, ifn_signature))
-    mean_ifn <- mean(pull(mdata, ifn_signature))
+    min <- min(pull(mdata, isg_signature))
+    max = max(pull(mdata, isg_signature))
+    mean_ifn <- mean(pull(mdata, isg_signature))
     col_fun_ifn = circlize::colorRamp2(breaks=c(min,
                                                 mean_ifn,
                                                 max), 
@@ -255,17 +286,20 @@ plot_heatmap_mock <- function(
                                         c("blue",
                                         "yellow",
                                         "red"))
-    col_ann <- HeatmapAnnotation(ifn_signature=mdata$"ifn_signature",
+    col_ann <- HeatmapAnnotation(isg_signature=mdata$"isg_signature",
                                 nfkb_signature=mdata$"nfkb_signature",
-                                cluster_renamed=mdata$"cluster_renamed",
-                                col = list(ifn_signature=col_fun_ifn,
-                                            nfkb_signature=col_fun_nfkb,
-                                            cluster_renamed=color_clusters
+                                #cluster_renamed=mdata$"cluster_renamed",
+                                col = list(isg_signature=col_fun_ifn,
+                                            nfkb_signature=col_fun_nfkb #,
+                                            #cluster_renamed=color_clusters
                                             ))
 
     Heatmap(mtx,
             top_annotation = col_ann,
             show_column_names = FALSE,
+            row_split = is_ifn_gene,
+            row_title = NULL,
+            cluster_rows = FALSE,
             column_title = sample_name)
 
 }
@@ -278,20 +312,23 @@ heatmaps_ifn_list <- lapply(
     samples, function(samp){
         if ( grepl("Mock", samp )) {
             hm <- plot_heatmap_mock(sample_name = samp,
-                         signature_name = "ifn_signature")
+                         signature_name = "isg_signature")
         } else {
             hm <- plot_heatmap(sample_name = samp,
-                         signature_name = "ifn_signature")
+                         signature_name = "isg_signature")
         }
         return(hm)
     }
 )
 
 
+jpeg(paste0(path2figures, "/heatmap_test.jpg"))
+heatmaps_ifn_list$"WTE"
+dev.off()
 
 
-pdf(paste0(path2figures, "/heatmap_gex_ifn.pdf"),
-    width = 60, height=10)
+pdf(paste0(path2figures, "/heatmap_gex_ifn_no_clusters.pdf"),
+    width = 60, height=15)
 
 grid.newpage()
 pushViewport(viewport(layout = grid.layout(nr = 1, nc = 7)))
@@ -331,6 +368,34 @@ dev.off()
 ##---------------------------------------------------------------------------
 ## NFkB 
 
+
+hvgs_list_nfkb <- lapply(samples, function(sample_name){
+    signature_df = FetchData(subset(seurat_2, 
+                                    orig.ident==sample_name &
+                                      isg_signature < quantile(
+                                                isg_signature, 
+                                                probs = 0.95,
+                                                 na.rm = TRUE) &
+                                      nfkb_signature < quantile(
+                                                nfkb_signature, 
+                                                probs = 0.95,
+                                                 na.rm = TRUE) &
+                                      ORF2 < quantile(ORF2, probs = 0.95)
+                                     ), 
+                        vars=c(signatures_list["nfkb_signature"][[1]]), 
+                        layer="data")
+    mtx <- signature_df %>%
+                    as.matrix() %>%
+                    t()
+    hvgs <- apply(mtx, 1, var) %>%
+                sort(decreasing = TRUE) %>%
+                head(50) %>%
+                names()
+    return(hvgs)
+})
+hvgs <- unlist(hvgs_list_nfkb) %>% unique()
+
+
 heatmaps_nfkb_list <- lapply(
     samples, function(samp){
         if ( grepl("Mock", samp )) {
@@ -347,8 +412,8 @@ heatmaps_nfkb_list <- lapply(
 
 
 
-pdf(paste0(path2figures, "/heatmap_gex_nfkb.pdf"),
-    width = 60, height=10)
+pdf(paste0(path2figures, "/heatmap_gex_nfkb_no_clusters.pdf"),
+    width = 60, height=12)
 
 grid.newpage()
 pushViewport(viewport(layout = grid.layout(nr = 1, nc = 7)))
